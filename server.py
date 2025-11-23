@@ -34,13 +34,18 @@ def handle_connect():
     reconnect_player_id = request.args.get('player_id')
     
     player_id = None
+    username = None
     # Try to reconnect the player
     if reconnect_player_id:
         try:
             player_id = int(reconnect_player_id)
             if player_id in players:
                 # Player found, update their SID
+                old_sid = players[player_id]['sid']
                 players[player_id]['sid'] = sid
+                # Remove old SID mapping if it exists
+                if old_sid in sid_to_player_id:
+                    del sid_to_player_id[old_sid]
                 sid_to_player_id[sid] = player_id
                 username = players[player_id]['username']
                 room_id = players[player_id]['room']
@@ -49,6 +54,8 @@ def handle_connect():
                     join_room(room_id)
                     print(f"Player {username} (ID: {player_id}) reconnected with new SID: {sid}")
                     emit('message', {'data': f"Welcome back, {username}!"}, room=sid)
+                    # Send player info again on reconnection
+                    emit('player_info', {'player_id': player_id, 'username': username}, room=sid)
                     # Resend the full game state to the reconnected player
                     games[room_id].broadcast_game_state()
                 else: # Game may have ended while they were away
@@ -72,36 +79,8 @@ def handle_connect():
         # Send the new player their ID to store for reconnections
         emit('player_info', {'player_id': player_id, 'username': username}, room=sid)
 
-    # Assign player to a room
-    found_room = False
-    for r_id, game in games.items():
-        if len(game.player_ids) < 4 and not game.game_started:
-            if player_id not in game.player_ids: # Ensure they aren't already in
-                game.add_player(player_id)
-                players[player_id]['room'] = r_id
-                join_room(r_id)
-                socketio.emit('message', {'data': f"{username} joined room {r_id}"}, room=r_id)
-                found_room = True
-                if len(game.player_ids) == 4:
-                    game.start_game()
-                break
-    
-    if not found_room:
-        new_room_id = f"room_{random.randint(1000, 9999)}"
-        # Get special hands configuration from request or use default
-        special_hands_config = request.args.get('special_hands_config')
-        if special_hands_config:
-            import json
-            try:
-                special_hands_config = json.loads(special_hands_config)
-            except:
-                special_hands_config = None
-        game = MahjongGame(new_room_id, special_hands_config)
-        games[new_room_id] = game
-        game.add_player(player_id)
-        players[player_id]['room'] = new_room_id
-        join_room(new_room_id)
-        socketio.emit('message', {'data': f"{username} created and joined new room {new_room_id}"}, room=new_room_id)
+    # Don't assign player to a room on initial connection
+    # The client will emit 'join_room_with_rules' after receiving player_info
 
 
 @socketio.on('join_room_with_rules')
@@ -115,24 +94,38 @@ def on_join_room_with_rules(data):
         'ikkitsuukan': True
     })
     
-    # Check if player already exists
+    # Check if player already exists in sid_to_player_id mapping
     if sid in sid_to_player_id:
         player_id = sid_to_player_id[sid]
-        old_room_id = players[player_id]['room']
-        if old_room_id in games:
-            game = games[old_room_id]
-            if player_id in game.player_ids:
-                game.player_ids.remove(player_id)
-            leave_room(old_room_id)
     else:
-        global player_id_counter
-        player_id_counter += 1
-        player_id = player_id_counter
-        players[player_id] = {'username': username, 'sid': sid, 'room': None}
-        sid_to_player_id[sid] = player_id
+        # Check if player has disconnected but still exists in players dict
+        # Look for a player with the same username that has a None SID
+        player_id = None
+        for p_id, p_info in players.items():
+            if p_info['username'] == username and p_info['sid'] is None:
+                player_id = p_id
+                players[player_id]['sid'] = sid
+                sid_to_player_id[sid] = player_id
+                break
+        
+        # If no disconnected player found, create new player
+        if player_id is None:
+            global player_id_counter
+            player_id_counter += 1
+            player_id = player_id_counter
+            players[player_id] = {'username': username, 'sid': sid, 'room': None}
+            sid_to_player_id[sid] = player_id
 
     players[player_id]['username'] = username
     found_room = False
+
+    # Check if player is already in a room and leave it
+    old_room_id = players[player_id]['room']
+    if old_room_id and old_room_id in games:
+        game = games[old_room_id]
+        if player_id in game.player_ids:
+            game.player_ids.remove(player_id)
+        leave_room(old_room_id)
 
     if room_id:  # Joining specific room
         if room_id in games:
@@ -200,7 +193,8 @@ def handle_disconnect():
     print(f"Player {username} (ID: {player_id}) disconnected.")
     # Don't delete the player from `players` dict, just mark their sid as None
     players[player_id]['sid'] = None
-    del sid_to_player_id[sid]
+    if sid in sid_to_player_id:
+        del sid_to_player_id[sid]
     
     if room_id in games:
         game = games[room_id]
@@ -209,11 +203,13 @@ def handle_disconnect():
             socketio.emit('message', {'data': f"{username} has disconnected. Waiting for reconnection..."}, room=room_id)
         else:
             # If game not started, treat as leaving for good
-            if player_id in game.player_ids: game.player_ids.remove(player_id)
-            del players[player_id] # Can delete fully if game hasn't started
+            if player_id in game.player_ids: 
+                game.player_ids.remove(player_id)
+            # Don't delete the player record to allow for reconnection
             socketio.emit('message', {'data': f"{username} left the room."}, room=room_id)
-            if not game.player_ids: # If room is empty, delete it
+            if len(game.player_ids) == 0: # If room is empty, delete it
                 del games[room_id]
+                print(f"Room {room_id} deleted as it's empty.")
 
 
 @socketio.on('discard_tile')

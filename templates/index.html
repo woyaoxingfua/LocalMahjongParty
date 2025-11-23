@@ -402,8 +402,18 @@
             var myUsername = '';
             var selectedTile = null;
 
-            // Send join room request with special rules
-            setTimeout(() => {
+            // Send join room request with special rules after receiving player_info
+            socket.on('player_info', function(data) {
+                myPlayerId = data.player_id;
+                myUsername = data.username;
+                // Store the player_id for future reconnections
+                localStorage.setItem('mahjong_player_id', myPlayerId);
+                
+                document.getElementById('my-username').textContent = `${myUsername} (ID: ${myPlayerId})`;
+                document.getElementById('my-sid').textContent = ''; // SID is transient, no need to display
+                addMessage(`You are ${myUsername} (Player ID: ${myPlayerId})`, 'notification');
+                
+                // Only emit join_room_with_rules after receiving player_info
                 socket.emit('join_room_with_rules', {
                     username: username,
                     room_id: roomId,
@@ -413,7 +423,7 @@
                         ikkitsuukan: ikkitsuukanEnabled
                     }
                 });
-            }, 500);
+            });
 
             function addMessage(msg, type = '') {
                 var item = document.createElement('li');
