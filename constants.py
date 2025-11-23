@@ -23,7 +23,9 @@ REVERSE_TILE_MAP = {v: k for k, v in TILE_MAP.items()}
 
 # Configuration for special hands
 DEFAULT_SPECIAL_HANDS_CONFIG = {
-    "pinhu": True,
+    "riichi": True,
+    "pinfu": True,
+    "ikkitsuukan": True,
     "iipeikou": True,
     "chantaiyao": True,
     "junchantaiyao": True,

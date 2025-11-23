@@ -10,12 +10,23 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: space-between;
+            justify-content: center;
             min-height: 100vh;
             margin: 0;
             background-color: #336633; /* Dark green felt */
             color: #eee;
             overflow: hidden; /* Prevent scrolling */
+        }
+        .setup-container {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            max-width: 500px;
+            padding: 20px;
+            box-sizing: border-box;
+            background-color: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            margin: 20px;
         }
         .game-container {
             display: flex;
@@ -194,6 +205,60 @@
         .error {
             color: red;
         }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input[type="text"],
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #555;
+            border-radius: 5px;
+            background-color: #444;
+            color: #eee;
+            box-sizing: border-box;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 10px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .checkbox-item input[type="checkbox"] {
+            width: auto;
+        }
+        
+        button {
+            padding: 12px 20px;
+            font-size: 1.1em;
+            cursor: pointer;
+            border: none;
+            border-radius: 5px;
+            background-color: #4CAF50;
+            color: white;
+            transition: background-color 0.2s ease;
+            width: 100%;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
 
         /* Responsive adjustments for smaller screens */
         @media (max-width: 600px) {
@@ -233,7 +298,42 @@
     </style>
 </head>
 <body>
-    <div class="game-container">
+    <div id="setup-screen" class="setup-container">
+        <h1 style="text-align: center; margin-top: 0;">LAN 麻将</h1>
+        <form id="setup-form">
+            <div class="form-group">
+                <label for="username">用户名:</label>
+                <input type="text" id="username" required placeholder="输入你的用户名">
+            </div>
+            
+            <div class="form-group">
+                <label for="room-id">房间ID (留空创建新房间):</label>
+                <input type="text" id="room-id" placeholder="输入房间ID">
+            </div>
+            
+            <div class="form-group">
+                <label>特殊牌型设置:</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="enable-riichi" checked>
+                        <label for="enable-riichi">立直</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="enable-pinfu" checked>
+                        <label for="enable-pinfu">平胡</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="enable-ikkitsuukan" checked>
+                        <label for="enable-ikkitsuukan">一气通贯</label>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit">开始游戏</button>
+        </form>
+    </div>
+
+    <div id="game-screen" class="game-container" style="display: none;">
         <!-- Other Players' Areas -->
         <div id="other-players-container" style="display: flex; justify-content: space-around; flex-wrap: wrap;">
             <!-- Placeholder for other players -->
@@ -271,259 +371,288 @@
         </div>
     </div>
 
-    <ul id="messages"></ul>
+    <ul id="messages" style="display: none;"></ul>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
     <script type="text/javascript">
-        // Attempt to get player_id from localStorage for reconnection
-        var stored_player_id = localStorage.getItem('mahjong_player_id');
-        var query = {};
-        if (stored_player_id) {
-            query.player_id = stored_player_id;
-        }
-        
-        var socket = io({ query: query });
-        var myPlayerId = stored_player_id || null;
-        var myUsername = '';
-        var selectedTile = null;
-
-        function addMessage(msg, type = '') {
-            var item = document.createElement('li');
-            item.textContent = msg;
-            if (type) {
-                item.classList.add(type);
-            }
-            document.getElementById('messages').appendChild(item);
-            document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-        }
-
-        socket.on('connect', function() {
-            addMessage('Connected to server!', 'notification');
-        });
-
-        socket.on('disconnect', function() {
-            addMessage('Disconnected from server! Attempting to reconnect...', 'error');
-        });
-
-        socket.on('player_info', function(data) {
-            myPlayerId = data.player_id;
-            myUsername = data.username;
-            // Store the player_id for future reconnections
-            localStorage.setItem('mahjong_player_id', myPlayerId);
+        // Setup form handling
+        document.getElementById('setup-form').addEventListener('submit', function(e) {
+            e.preventDefault();
             
-            document.getElementById('my-username').textContent = `${myUsername} (ID: ${myPlayerId})`;
-            document.getElementById('my-sid').textContent = ''; // SID is transient, no need to display
-            addMessage(`You are ${myUsername} (Player ID: ${myPlayerId})`, 'notification');
-        });
+            const username = document.getElementById('username').value;
+            const roomId = document.getElementById('room-id').value;
+            const riichiEnabled = document.getElementById('enable-riichi').checked;
+            const pinfuEnabled = document.getElementById('enable-pinfu').checked;
+            const ikkitsuukanEnabled = document.getElementById('enable-ikkitsuukan').checked;
+            
+            // Hide setup screen and show game screen
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'flex';
+            document.getElementById('messages').style.display = 'block';
+            
+            // Connect to socket with special rules
+            var stored_player_id = localStorage.getItem('mahjong_player_id');
+            var query = {};
+            if (stored_player_id) {
+                query.player_id = stored_player_id;
+            }
+            
+            var socket = io({ query: query });
+            var myPlayerId = stored_player_id || null;
+            var myUsername = '';
+            var selectedTile = null;
 
-        socket.on('message', function(msg) {
-            addMessage(msg.data);
-        });
-
-        socket.on('room_update', function(data) {
-            addMessage(`Joined room: ${data.room_id}. Players in room: ${data.players_in_room}`);
-        });
-
-        socket.on('error', function(data) {
-            addMessage(`Error: ${data.message}`, 'error');
-        });
-
-        socket.on('game_state_update', function(state) {
-            console.log('Game State Update:', state);
-            addMessage('Game state updated.');
-
-            // Update current player's hand
-            var myHandDiv = document.getElementById('my-hand');
-            myHandDiv.innerHTML = '';
-            state.your_hand.forEach(function(tile) {
-                var tileDiv = document.createElement('div');
-                tileDiv.classList.add('mahjong-tile');
-                tileDiv.textContent = tile;
-                tileDiv.dataset.tile = tile;
-                tileDiv.onclick = function() {
-                    if (selectedTile) {
-                        selectedTile.classList.remove('selected');
+            // Send join room request with special rules
+            setTimeout(() => {
+                socket.emit('join_room_with_rules', {
+                    username: username,
+                    room_id: roomId,
+                    special_rules: {
+                        riichi: riichiEnabled,
+                        pinfu: pinfuEnabled,
+                        ikkitsuukan: ikkitsuukanEnabled
                     }
-                    selectedTile = this;
-                    selectedTile.classList.add('selected');
-                };
-                myHandDiv.appendChild(tileDiv);
+                });
+            }, 500);
+
+            function addMessage(msg, type = '') {
+                var item = document.createElement('li');
+                item.textContent = msg;
+                if (type) {
+                    item.classList.add(type);
+                }
+                document.getElementById('messages').appendChild(item);
+                document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+            }
+
+            socket.on('connect', function() {
+                addMessage('Connected to server!', 'notification');
             });
 
-            // Update current player's melds
-            var myMeldsDiv = document.getElementById('my-melds');
-            myMeldsDiv.innerHTML = '';
-            state.your_melds.forEach(function(meld) {
-                var meldDiv = document.createElement('div');
-                meldDiv.classList.add('player-meld');
-                meld.forEach(function(tile) {
+            socket.on('disconnect', function() {
+                addMessage('Disconnected from server! Attempting to reconnect...', 'error');
+            });
+
+            socket.on('player_info', function(data) {
+                myPlayerId = data.player_id;
+                myUsername = data.username;
+                // Store the player_id for future reconnections
+                localStorage.setItem('mahjong_player_id', myPlayerId);
+                
+                document.getElementById('my-username').textContent = `${myUsername} (ID: ${myPlayerId})`;
+                document.getElementById('my-sid').textContent = ''; // SID is transient, no need to display
+                addMessage(`You are ${myUsername} (Player ID: ${myPlayerId})`, 'notification');
+            });
+
+            socket.on('message', function(msg) {
+                addMessage(msg.data);
+            });
+
+            socket.on('room_update', function(data) {
+                addMessage(`Joined room: ${data.room_id}. Players in room: ${data.players_in_room}`);
+            });
+
+            socket.on('error', function(data) {
+                addMessage(`Error: ${data.message}`, 'error');
+            });
+
+            socket.on('game_state_update', function(state) {
+                console.log('Game State Update:', state);
+                addMessage('Game state updated.');
+
+                // Update current player's hand
+                var myHandDiv = document.getElementById('my-hand');
+                myHandDiv.innerHTML = '';
+                state.your_hand.forEach(function(tile) {
                     var tileDiv = document.createElement('div');
                     tileDiv.classList.add('mahjong-tile');
-                    tileDiv.classList.add('discarded'); // Melded tiles are like discarded
                     tileDiv.textContent = tile;
-                    meldDiv.appendChild(tileDiv);
+                    tileDiv.dataset.tile = tile;
+                    tileDiv.onclick = function() {
+                        if (selectedTile) {
+                            selectedTile.classList.remove('selected');
+                        }
+                        selectedTile = this;
+                        selectedTile.classList.add('selected');
+                    };
+                    myHandDiv.appendChild(tileDiv);
                 });
-                myMeldsDiv.appendChild(meldDiv);
-            });
 
-            // Update current player's discard pile
-            var myDiscardPileDiv = document.getElementById('my-discard-pile');
-            myDiscardPileDiv.innerHTML = '';
-            state.your_discard_pile.forEach(function(tile) {
-                var tileDiv = document.createElement('div');
-                tileDiv.classList.add('mahjong-tile');
-                tileDiv.classList.add('discarded');
-                tileDiv.textContent = tile;
-                myDiscardPileDiv.appendChild(tileDiv);
-            });
+                // Update current player's melds
+                var myMeldsDiv = document.getElementById('my-melds');
+                myMeldsDiv.innerHTML = '';
+                state.your_melds.forEach(function(meld) {
+                    var meldDiv = document.createElement('div');
+                    meldDiv.classList.add('player-meld');
+                    meld.forEach(function(tile) {
+                        var tileDiv = document.createElement('div');
+                        tileDiv.classList.add('mahjong-tile');
+                        tileDiv.classList.add('discarded'); // Melded tiles are like discarded
+                        tileDiv.textContent = tile;
+                        meldDiv.appendChild(tileDiv);
+                    });
+                    myMeldsDiv.appendChild(meldDiv);
+                });
 
-            // Update center discard pile
-            var centerDiscardPileDiv = document.getElementById('center-discard-pile');
-            centerDiscardPileDiv.innerHTML = '';
-            // For simplicity, we'll show all discards from all players in the center
-            // A more accurate display would show discards per player, maybe rotated.
-            state.other_players.forEach(function(player) {
-                player.discard_pile.forEach(function(tile) {
+                // Update current player's discard pile
+                var myDiscardPileDiv = document.getElementById('my-discard-pile');
+                myDiscardPileDiv.innerHTML = '';
+                state.your_discard_pile.forEach(function(tile) {
+                    var tileDiv = document.createElement('div');
+                    tileDiv.classList.add('mahjong-tile');
+                    tileDiv.classList.add('discarded');
+                    tileDiv.textContent = tile;
+                    myDiscardPileDiv.appendChild(tileDiv);
+                });
+
+                // Update center discard pile
+                var centerDiscardPileDiv = document.getElementById('center-discard-pile');
+                centerDiscardPileDiv.innerHTML = '';
+                // For simplicity, we'll show all discards from all players in the center
+                // A more accurate display would show discards per player, maybe rotated.
+                state.other_players.forEach(function(player) {
+                    player.discard_pile.forEach(function(tile) {
+                        var tileDiv = document.createElement('div');
+                        tileDiv.classList.add('mahjong-tile');
+                        tileDiv.classList.add('discarded');
+                        tileDiv.textContent = tile;
+                        centerDiscardPileDiv.appendChild(tileDiv);
+                    });
+                });
+                // Add current player's discards to center pile for a holistic view
+                state.your_discard_pile.forEach(function(tile) {
                     var tileDiv = document.createElement('div');
                     tileDiv.classList.add('mahjong-tile');
                     tileDiv.classList.add('discarded');
                     tileDiv.textContent = tile;
                     centerDiscardPileDiv.appendChild(tileDiv);
                 });
-            });
-            // Add current player's discards to center pile for a holistic view
-            state.your_discard_pile.forEach(function(tile) {
-                var tileDiv = document.createElement('div');
-                tileDiv.classList.add('mahjong-tile');
-                tileDiv.classList.add('discarded');
-                tileDiv.textContent = tile;
-                centerDiscardPileDiv.appendChild(tileDiv);
-            });
 
 
-            // Update other players' areas
-            var otherPlayersContainer = document.getElementById('other-players-container');
-            otherPlayersContainer.innerHTML = '';
-            state.other_players.forEach(function(player) {
-                var playerDiv = document.createElement('div');
-                playerDiv.classList.add('player-area', 'other-player');
-                
-                var infoDiv = document.createElement('div');
-                infoDiv.classList.add('player-info');
-                infoDiv.textContent = player.username;
-                if (state.current_turn_player === player.username) {
-                    var turnIndicator = document.createElement('span');
-                    turnIndicator.classList.add('current-player-indicator');
-                    turnIndicator.textContent = '(轮到ta)';
-                    infoDiv.appendChild(turnIndicator);
-                }
-                infoDiv.innerHTML += ` (牌数: ${player.hand_size})`;
-                playerDiv.appendChild(infoDiv);
+                // Update other players' areas
+                var otherPlayersContainer = document.getElementById('other-players-container');
+                otherPlayersContainer.innerHTML = '';
+                state.other_players.forEach(function(player) {
+                    var playerDiv = document.createElement('div');
+                    playerDiv.classList.add('player-area', 'other-player');
+                    
+                    var infoDiv = document.createElement('div');
+                    infoDiv.classList.add('player-info');
+                    infoDiv.textContent = player.username;
+                    if (state.current_turn_player === player.username) {
+                        var turnIndicator = document.createElement('span');
+                        turnIndicator.classList.add('current-player-indicator');
+                        turnIndicator.textContent = '(轮到ta)';
+                        infoDiv.appendChild(turnIndicator);
+                    }
+                    infoDiv.innerHTML += ` (牌数: ${player.hand_size})`;
+                    playerDiv.appendChild(infoDiv);
 
-                var meldsDiv = document.createElement('div');
-                meldsDiv.classList.add('player-melds');
-                player.melds.forEach(function(meld) {
-                    var meldGroupDiv = document.createElement('div');
-                    meldGroupDiv.classList.add('player-meld');
-                    meld.forEach(function(tile) {
+                    var meldsDiv = document.createElement('div');
+                    meldsDiv.classList.add('player-melds');
+                    player.melds.forEach(function(meld) {
+                        var meldGroupDiv = document.createElement('div');
+                        meldGroupDiv.classList.add('player-meld');
+                        meld.forEach(function(tile) {
+                            var tileDiv = document.createElement('div');
+                            tileDiv.classList.add('mahjong-tile', 'discarded');
+                            tileDiv.textContent = tile;
+                            meldGroupDiv.appendChild(tileDiv);
+                        });
+                        meldsDiv.appendChild(meldGroupDiv);
+                    });
+                    playerDiv.appendChild(meldsDiv);
+
+                    var discardDiv = document.createElement('div');
+                    discardDiv.classList.add('mahjong-tiles');
+                    player.discard_pile.forEach(function(tile) {
                         var tileDiv = document.createElement('div');
                         tileDiv.classList.add('mahjong-tile', 'discarded');
                         tileDiv.textContent = tile;
-                        meldGroupDiv.appendChild(tileDiv);
+                        discardDiv.appendChild(tileDiv);
                     });
-                    meldsDiv.appendChild(meldGroupDiv);
+                    playerDiv.appendChild(discardDiv);
+                    otherPlayersContainer.appendChild(playerDiv);
                 });
-                playerDiv.appendChild(meldsDiv);
 
-                var discardDiv = document.createElement('div');
-                discardDiv.classList.add('mahjong-tiles');
-                player.discard_pile.forEach(function(tile) {
-                    var tileDiv = document.createElement('div');
-                    tileDiv.classList.add('mahjong-tile', 'discarded');
-                    tileDiv.textContent = tile;
-                    discardDiv.appendChild(tileDiv);
-                });
-                playerDiv.appendChild(discardDiv);
-                otherPlayersContainer.appendChild(playerDiv);
+                // Indicate current player's turn
+                document.getElementById('my-turn-indicator').style.display = 
+                    (state.current_turn_player === myUsername) ? 'inline' : 'none';
+                
+                // Check if game started
+                if (state.game_started) {
+                    addMessage('Game started!');
+                }
             });
 
-            // Indicate current player's turn
-            document.getElementById('my-turn-indicator').style.display = 
-                (state.current_turn_player === myUsername) ? 'inline' : 'none';
-            
-            // Check if game started
-            if (state.game_started) {
-                addMessage('Game started!');
-            }
-        });
+            socket.on('player_disconnected', function(data) {
+                addMessage(`${data.username} has disconnected. The game has ended.`, 'error');
+                // Optionally, disable the game board or provide a button to start a new game.
+                document.getElementById('action-buttons').style.display = 'none';
+            });
 
-        socket.on('player_disconnected', function(data) {
-            addMessage(`${data.username} has disconnected. The game has ended.`, 'error');
-            // Optionally, disable the game board or provide a button to start a new game.
-            document.getElementById('action-buttons').style.display = 'none';
-        });
+            socket.on('your_turn_to_discard', function() {
+                addMessage('It\'s your turn to discard!', 'notification');
+                // Enable discarding
+                document.getElementById('my-hand').classList.add('active-hand'); // Add a class for visual cue
+            });
 
-        socket.on('your_turn_to_discard', function() {
-            addMessage('It\'s your turn to discard!', 'notification');
-            // Enable discarding
-            document.getElementById('my-hand').classList.add('active-hand'); // Add a class for visual cue
-        });
+            socket.on('action_option', function(data) {
+                addMessage('Action options available!', 'notification');
+                document.getElementById('action-buttons').style.display = 'flex';
+                document.getElementById('peng-button').style.display = data.options.peng ? 'block' : 'none';
+                document.getElementById('gang-button').style.display = data.options.gang ? 'block' : 'none';
+                document.getElementById('hu-button').style.display = data.options.hu ? 'block' : 'none';
+            });
 
-        socket.on('action_option', function(data) {
-            addMessage('Action options available!', 'notification');
-            document.getElementById('action-buttons').style.display = 'flex';
-            document.getElementById('peng-button').style.display = data.options.peng ? 'block' : 'none';
-            document.getElementById('gang-button').style.display = data.options.gang ? 'block' : 'none';
-            document.getElementById('hu-button').style.display = data.options.hu ? 'block' : 'none';
-        });
-
-        socket.on('tile_drawn', function(data) {
-            addMessage(`You drew ${data.tile}!`, 'notification');
-            // Find the newly drawn tile in the hand and highlight it
-            var myHandDiv = document.getElementById('my-hand');
-            var tiles = myHandDiv.querySelectorAll('.mahjong-tile');
-            for (var i = 0; i < tiles.length; i++) {
-                if (tiles[i].textContent === data.tile && !tiles[i].classList.contains('highlight-drawn')) {
-                    tiles[i].classList.add('highlight-drawn');
-                    setTimeout(function(tileElement) {
-                        tileElement.classList.remove('highlight-drawn');
-                    }, 2000, tiles[i]); // Remove highlight after 2 seconds
-                    break;
+            socket.on('tile_drawn', function(data) {
+                addMessage(`You drew ${data.tile}!`, 'notification');
+                // Find the newly drawn tile in the hand and highlight it
+                var myHandDiv = document.getElementById('my-hand');
+                var tiles = myHandDiv.querySelectorAll('.mahjong-tile');
+                for (var i = 0; i < tiles.length; i++) {
+                    if (tiles[i].textContent === data.tile && !tiles[i].classList.contains('highlight-drawn')) {
+                        tiles[i].classList.add('highlight-drawn');
+                        setTimeout(function(tileElement) {
+                            tileElement.classList.remove('highlight-drawn');
+                        }, 2000, tiles[i]); // Remove highlight after 2 seconds
+                        break;
+                    }
                 }
-            }
-        });
+            });
 
-        // Event listeners for action buttons
-        document.getElementById('peng-button').onclick = function() {
-            socket.emit('player_action', {action_type: 'peng'});
-            document.getElementById('action-buttons').style.display = 'none';
-        };
-        document.getElementById('gang-button').onclick = function() {
-            socket.emit('player_action', {action_type: 'gang'});
-            document.getElementById('action-buttons').style.display = 'none';
-        };
-        document.getElementById('hu-button').onclick = function() {
-            socket.emit('player_action', {action_type: 'hu'});
-            document.getElementById('action-buttons').style.display = 'none';
-        };
-        document.getElementById('pass-button').onclick = function() {
-            socket.emit('player_action', {action_type: 'pass'});
-            document.getElementById('action-buttons').style.display = 'none';
-        };
+            // Event listeners for action buttons
+            document.getElementById('peng-button').onclick = function() {
+                socket.emit('player_action', {action_type: 'peng'});
+                document.getElementById('action-buttons').style.display = 'none';
+            };
+            document.getElementById('gang-button').onclick = function() {
+                socket.emit('player_action', {action_type: 'gang'});
+                document.getElementById('action-buttons').style.display = 'none';
+            };
+            document.getElementById('hu-button').onclick = function() {
+                socket.emit('player_action', {action_type: 'hu'});
+                document.getElementById('action-buttons').style.display = 'none';
+            };
+            document.getElementById('pass-button').onclick = function() {
+                socket.emit('player_action', {action_type: 'pass'});
+                document.getElementById('action-buttons').style.display = 'none';
+            };
 
-        // Discard functionality
-        document.getElementById('my-hand').addEventListener('click', function(event) {
-            if (event.target.classList.contains('mahjong-tile') && selectedTile) {
-                // Ensure it's current player's turn to discard
-                if (document.getElementById('my-turn-indicator').style.display === 'inline') {
-                    socket.emit('discard_tile', {tile: selectedTile.dataset.tile});
-                    selectedTile.classList.remove('selected');
-                    selectedTile = null;
-                    document.getElementById('my-hand').classList.remove('active-hand');
-                } else {
-                    addMessage('It is not your turn to discard.', 'error');
+            // Discard functionality
+            document.getElementById('my-hand').addEventListener('click', function(event) {
+                if (event.target.classList.contains('mahjong-tile') && selectedTile) {
+                    // Ensure it's current player's turn to discard
+                    if (document.getElementById('my-turn-indicator').style.display === 'inline') {
+                        socket.emit('discard_tile', {tile: selectedTile.dataset.tile});
+                        selectedTile.classList.remove('selected');
+                        selectedTile = null;
+                        document.getElementById('my-hand').classList.remove('active-hand');
+                    } else {
+                        addMessage('It is not your turn to discard.', 'error');
+                    }
                 }
-            }
+            });
         });
     </script>
 </body>
