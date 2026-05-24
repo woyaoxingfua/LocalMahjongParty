@@ -31,6 +31,12 @@ class RoomManager:
         # room_id -> MahjongGame
         self._games: dict[str, 'MahjongGame'] = {}
         self._pid_counter: int = 0
+        # 房间名称：room_id -> room_name
+        self._room_names: dict[str, str] = {}
+        # 房主：room_id -> owner_pid
+        self._room_owners: dict[str, int] = {}
+        # 观战者：room_id -> set of pid
+        self._spectators: dict[str, set[int]] = {}
 
     # ── 玩家注册 ──────────────────────────────────────────────────
     def new_player(self, sid: str, username: str | None = None) -> int:
@@ -107,6 +113,9 @@ class RoomManager:
 
     def remove_game(self, room_id: str) -> None:
         self._games.pop(room_id, None)
+        self._room_names.pop(room_id, None)
+        self._room_owners.pop(room_id, None)
+        self._spectators.pop(room_id, None)
 
     def find_open_room(self) -> 'MahjongGame | None':
         """找到等待中且未满员的房间"""
@@ -115,7 +124,7 @@ class RoomManager:
                 return game
         return None
 
-    def make_room(self, socketio: 'SocketIO') -> 'MahjongGame':
+    def make_room(self, socketio: 'SocketIO', room_name: str | None = None, owner_pid: int | None = None) -> 'MahjongGame':
         """创建新房间，自动注入依赖"""
         from game import MahjongGame
 
@@ -126,7 +135,82 @@ class RoomManager:
         game = MahjongGame(rid, socketio)
         game.set_player_resolver(self.get_sid, self.get_username)
         self._games[rid] = game
+
+        # 房间名称
+        self._room_names[rid] = room_name or rid
+        # 房主
+        if owner_pid is not None:
+            self._room_owners[rid] = owner_pid
+        # 观战者集合
+        self._spectators[rid] = set()
+
         return game
+
+    def set_room_name(self, room_id: str, name: str) -> None:
+        """设置房间名称"""
+        self._room_names[room_id] = name
+
+    def get_room_name(self, room_id: str) -> str:
+        """获取房间名称，若未设置则返回 room_id"""
+        return self._room_names.get(room_id, room_id)
+
+    def get_room_owner(self, room_id: str) -> int | None:
+        """获取房主 pid"""
+        return self._room_owners.get(room_id)
+
+    def set_room_owner(self, room_id: str, pid: int) -> None:
+        """设置房主"""
+        self._room_owners[room_id] = pid
+
+    def list_rooms(self) -> list[dict]:
+        """返回所有房间信息列表，用于大厅展示"""
+        result: list[dict] = []
+        for rid, game in self._games.items():
+            owner_pid = self._room_owners.get(rid)
+            result.append({
+                'room_id': rid,
+                'room_name': self._room_names.get(rid, rid),
+                'player_count': len(game.player_ids),
+                'phase': game.phase,
+                'owner_pid': owner_pid,
+                'owner_name': self.get_username(owner_pid) if owner_pid else '',
+                'players': [
+                    {
+                        'pid': p,
+                        'username': self.get_username(p),
+                        'seat': game.seat_name(p),
+                    }
+                    for p in game.player_ids
+                ],
+                'spectator_count': len(self._spectators.get(rid, set())),
+            })
+        return result
+
+    def add_spectator(self, room_id: str, pid: int) -> None:
+        """添加观战者到房间"""
+        if room_id not in self._spectators:
+            self._spectators[room_id] = set()
+        self._spectators[room_id].add(pid)
+        self._players[pid]['room'] = room_id
+
+    def remove_spectator(self, room_id: str, pid: int) -> None:
+        """从房间移除观战者"""
+        if room_id in self._spectators:
+            self._spectators[room_id].discard(pid)
+        if pid in self._players and self._players[pid].get('room') == room_id:
+            self._players[pid]['room'] = None
+
+    def get_spectators(self, room_id: str) -> set[int]:
+        """获取房间的观战者 pid 集合"""
+        return self._spectators.get(room_id, set())
+
+    def is_spectator(self, pid: int, room_id: str) -> bool:
+        """判断玩家是否是某房间的观战者"""
+        return pid in self._spectators.get(room_id, set())
+
+    def find_room_by_id(self, room_id: str) -> 'MahjongGame | None':
+        """根据 room_id 查找房间（get_game 的别名，语义更清晰）"""
+        return self._games.get(room_id)
 
     # ── 调试 ──────────────────────────────────────────────────────
     def stats(self) -> dict:
